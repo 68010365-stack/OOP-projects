@@ -67,3 +67,9 @@ class reciept():
 
 class Ticket():
     pass
+
+
+# schematics
+
+
+# api/mcp
