@@ -23,27 +23,35 @@ class User():
 
     @property
     def username(self): 
-        return self.__name
+        return self.__id
 
     @property
-    def get_email():
-        pass
+    def get_email(self):
+        return self.__email
 
     @property
-    def get_status():
-        pass
+    def get_status(self):
+        return self.__status
 
 
 class Member(User):
-    def __init__(self):
+    def __init__(self, id, name, phone=None, email=None):
+        super().__init__(id, name, phone, email)
         self.__tickets = []
         self.__order = []
 
     @property
     def tickets(self): return self.__tickets
-
+    
+    @property
+    def orders(self):
+        return self.__order
+    
     def add_ticket(self, ticket):
         self.__tickets.append(ticket)
+
+    def add_order(self, order):
+        self.__order.append(order)    
 
 
 class Player(User):
@@ -54,26 +62,61 @@ class Player(User):
 # Main Class
 
 class Server():
-    pass
+    def __init__(self):
+        self.__users: List[User] = []
+        self.__tournaments: List[Tournament] = []
+        self.__current_user: Optional[Member] = None
 
+    def add_user(self, user: User):
+        self.__users.append(user)
+
+    def add_tournament(self, tournament: Tournament):
+        self.__tournaments.append(tournament)
+
+    def get_tournament(self) -> Tournament:
+        return self.__tournaments[0]
+
+    def find_user(self, username: str) -> Optional[Member]:
+        return next((u for u in self.__users if u.username == username), None)
+
+    def login(self, username: str) -> Optional[Member]:
+        user = self.find_user(username)
+
+        if isinstance(user, Member):
+            self.__current_user = user
+            return user
+
+        return None
+
+    def enter_match(self, user: Member, match_id: int, seat_id: str):
+        tournament = self.__tournaments[0]
+        return tournament.use_ticket(user, match_id, seat_id)
+
+    @property
+    def current_user(self) -> Optional[Member]:
+        return self.__current_user
 
 class Tournament():
     def __init__(self):
         self.__match_list = []
         self.__physical_seats = []
-        self.__members = []
 
-    def add_member(self, member: Member):
-        self.__members.append(member)
+    def add_seat(self, seat: Seat):
 
-    def get_member(self, username: str) -> Optional[Member]:
-        return next((m for m in self.__members if m.username == username), None)
+        if any(s.id == seat.id for s in self.__physical_seats):
+            raise ValueError("Seat already exists")
 
-    def add_seat(self, seat: Seat): 
         self.__physical_seats.append(seat)
 
-    def add_match(self, match: Match): 
+    def add_match(self, match: Match):
+
+        if any(m.match_id == match.match_id for m in self.__match_list):
+            raise ValueError("Match already exists")
+
         self.__match_list.append(match)
+
+    def get_match(self, match_id: int) -> Optional[Match]:
+        return next((m for m in self.__match_list if m.match_id == match_id), None)
 
     # ปัง: ใช้ ticket ของ Member ทำให้ ticket เปลี่ยนสถานะเป็น 'Used'| เปลี่ยนที่นั่งให้ว่า ตอนนี้ ณ matchนี้ มีคนนั่ง seat นี้แล้ว(เก็บใน match แบบ list)
     def use_ticket(self, user: Member, match_id: int, seat_id: str): 
@@ -111,13 +154,37 @@ class Match():
 class Seat():
     def __init__(self, id: str):
         self.__tier = None
-        self.id = id 
+        self.__id = id 
 
+    @property
+    def id(self):
+        return self.__id
+    
 class OrderSeat():
     pass
 
 class OrderProduct():
-    pass
+
+    def __init__(self, order_id: int, member: Member, match: Match):
+        self.__order_id = order_id
+        self.__member = member
+        self.__match = match
+        self.__items: List[Product] = []
+
+    def add_product(self, product: Product):
+        self.__items.append(product)
+
+    @property
+    def items(self):
+        return self.__items
+
+    @property
+    def total_price(self):
+        return sum(p.price for p in self.__items)
+
+    @property
+    def order_id(self):
+        return self.__order_id
 
 
 
@@ -171,23 +238,56 @@ class Occupation:
 
 
 class Store():
-    pass
+    def __init__(self):
+        self.__products: List[Product] = []
+
+    def add_product(self, product: Product):
+
+        if any(p.id == product.id for p in self.__products):
+            raise ValueError("Product already exists")
+
+        self.__products.append(product)
+
+    def get_products(self):
+        return self.__products
+
+    def get_product(self, product_id: int) -> Optional[Product]:
+        return next((p for p in self.__products if p.id == product_id), None)
 
 
 class Product():
-    pass
+    def __init__(self, id: int, name: str, price: float):
+        self.__id = id
+        self.__name = name
+        self.__price = price
+
+    @property
+    def id(self):
+        return self.__id
+
+    @property
+    def name(self):
+        return self.__name
+
+    @property
+    def price(self):
+        return self.__price
 
 
-class reciept():
+class Receipt():
     pass
 
 
 class Ticket():
     def __init__(self, ticket_id: int, booked_seat: BookedSeat):
-        self.ticket_id = ticket_id
+        self.__ticket_id = ticket_id
         self.__booked_seat = booked_seat
         self.status = "Valid"
 
+    @property
+    def ticket_id(self):
+        return self.__ticket_id
+    
     @property
     def match_id(self): 
         return self.__booked_seat.match_id
@@ -200,12 +300,16 @@ class Ticket():
 
 # System Setup| ปัง: อันนี้ผมใส่ไปก่อนถ้ามีใครจะแก้ก็ได้เลย
 
+server = Server()
 Championship = Tournament()
+server.add_tournament(Championship)
+
 
 user1 = Member("pange_123", "Pange")
 user2 = Member("ark_456", "Ark")
-Championship.add_member(user1)
-Championship.add_member(user2)
+server.add_user(user1)
+server.add_user(user2)
+
 
 s1 = Seat("a01")
 Championship.add_seat(s1)
@@ -215,8 +319,11 @@ Championship.add_match(m1)
 Pange_ticket = Ticket(1001, BookedSeat(m1, s1))
 user1.add_ticket(Pange_ticket)
 
-current_logged_in_user: Optional[Member] = None # ปัง: ใครที่ทำเกี่ยวกับ user login แก้ได้เลย
+store = Store()
 
+store.add_product(Product(1, "Water", 20))
+store.add_product(Product(2, "Popcorn", 50))
+store.add_product(Product(3, "Team Jersey", 1200))
 
 
 # schematics
@@ -230,6 +337,25 @@ class TicketSchema(BaseModel):
     status: str
     class Config: from_attributes = True
 
+class ProductSchema(BaseModel):
+    id: int
+    name: str
+    price: float
+
+    class Config:
+        from_attributes = True
+
+class OrderSchema(BaseModel):
+    order_id: int
+    total_price: float
+
+    class Config:
+        from_attributes = True
+
+class BuyRequest(BaseModel):
+    product_ids: List[int]
+    match_id: int
+
 
 
 # api/mcp
@@ -237,30 +363,85 @@ class TicketSchema(BaseModel):
 # ปัง: อันนี้สำหรับ log in ใครที่ทำเกี่ยวกับ user login แก้ได้เลย
 @app.post("/login", tags=["Auth"])
 async def login(req: LoginRequest):
-    global current_logged_in_user
-    user = Championship.get_member(req.username)
+
+    user = server.login(req.username)
+
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
-    current_logged_in_user = user
+
     return {"message": f"Logged in as {user.username}"}
 
 # ปัง: ใช้ดูว่ามี ticket ไรบ้าง
 @app.get("/me/tickets", response_model=List[TicketSchema], tags=["Member"])
 async def get_my_tickets():
-    if not current_logged_in_user:
+    user = server.current_user
+    if not user:
         raise HTTPException(status_code=401, detail="Please login first")
-    return current_logged_in_user.tickets
+    if not isinstance(user, Member):
+        raise HTTPException(status_code=403, detail="Not a member")
+
+    return user.tickets
 
 # ปัง: เข้าชม match
 @app.put("/enter/{match_id}/{seat_id}", tags=["Tournament"])
 async def enter_seat(match_id: int, seat_id: str):
-    if not current_logged_in_user:
+
+    user = server.current_user
+    if not user:
         raise HTTPException(status_code=401, detail="Please login first")
-    
-    result = Championship.use_ticket(current_logged_in_user, match_id, seat_id)
+    if not isinstance(user, Member):
+        raise HTTPException(status_code=403, detail="Not a member")
+
+    result = server.enter_match(user, match_id, seat_id)
+
     if "Error" in result:
         raise HTTPException(status_code=400, detail=result)
+
     return {"message": result}
+
+#ปัง: เกี่ยวกับ store/product
+@app.get("/store/products", response_model=List[ProductSchema], tags=["Store"])
+async def get_products():
+    return store.get_products()
+
+@app.post("/store/buy", tags=["Store"])
+async def buy_products(req: BuyRequest):
+
+    user = server.current_user
+    if not user:
+        raise HTTPException(status_code=401, detail="Please login first")
+
+    tournament = server.get_tournament()
+    match = tournament.get_match(req.match_id)
+    if not match:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    order = OrderProduct(len(user.orders) + 1, user, match)
+
+    for pid in req.product_ids:
+
+        product = store.get_product(pid)
+
+        if not product:
+            raise HTTPException(status_code=404, detail=f"Product {pid} not found")
+
+        order.add_product(product)
+
+    user.add_order(order)
+
+    return {
+        "message": "Order successful",
+        "total_price": order.total_price
+    }
+
+@app.get("/me/orders", response_model=List[OrderSchema], tags=["Member"])
+async def get_my_orders():
+
+    user = server.current_user
+    if not user:
+        raise HTTPException(status_code=401, detail="Please login first")
+
+    return user.orders
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
