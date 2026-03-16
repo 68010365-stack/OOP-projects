@@ -162,7 +162,7 @@ async def ready_player(match_id: str, player_id: str):
 # -------------------------
 # SEATS / TICKETS
 # -------------------------
-
+#get seat in match
 @mcp.tool()
 async def get_match_seats(match_id: str):
     """Get seats of a match"""
@@ -173,7 +173,7 @@ async def get_match_seats(match_id: str):
         )
         return r.json()
 
-
+#create seat order
 @mcp.tool()
 async def create_seat_order(match_id: str, seat_id: str):
     """Create seat booking order"""
@@ -188,7 +188,7 @@ async def create_seat_order(match_id: str, seat_id: str):
         )
         return r.json()
 
-
+#pay seat
 @mcp.tool()
 async def pay_order(order_id: str, payment_type: str, coupon_id: str = ""):
     """Pay an order"""
@@ -205,6 +205,7 @@ async def pay_order(order_id: str, payment_type: str, coupon_id: str = ""):
         return r.json()
 
 
+#get ticket
 @mcp.tool()
 async def get_my_tickets():
     """Get my tickets"""
@@ -218,6 +219,7 @@ async def get_my_tickets():
 # STORE ORDER
 # -------------------------
 
+#create product order
 @mcp.tool()
 async def create_store_order(match_id: str, product_ids: list[int], store_id: str):
     """Create store order"""
@@ -233,7 +235,7 @@ async def create_store_order(match_id: str, product_ids: list[int], store_id: st
         )
         return r.json()
 
-
+#get store product
 @mcp.tool()
 async def get_store_products(store_id: str = "S001"):
     """Get store products"""
@@ -245,7 +247,7 @@ async def get_store_products(store_id: str = "S001"):
         )
         return r.json()
 
-
+#create product
 @mcp.tool()
 async def create_product(product_id: int, name: str, price: float, stock: int, store_id: str = "S001"):
     """Create store product"""
@@ -263,7 +265,7 @@ async def create_product(product_id: int, name: str, price: float, stock: int, s
         )
         return r.json()
 
-
+#add product stock
 @mcp.tool()
 async def add_stock(product_id: int, amount: int, store_id: str = "S001"):
     """Add product stock"""
@@ -283,7 +285,7 @@ async def add_stock(product_id: int, amount: int, store_id: str = "S001"):
 # DEMO TIME
 # -------------------------
 
-
+#get time
 @mcp.tool()
 async def get_demo_time():
     """Get demo time"""
@@ -292,7 +294,7 @@ async def get_demo_time():
         r = await client.get(f"{BASE_URL}/demo-time")
         return r.json()
 
-
+#set time
 @mcp.tool()
 async def set_demo_time(iso_datetime: str):
     """Set demo time"""
@@ -306,7 +308,7 @@ async def set_demo_time(iso_datetime: str):
         )
         return r.json()
 
-
+#advance time
 @mcp.tool()
 async def advance_demo_time(minutes: int = 0, hours: int = 0):
     """Advance demo time"""
