@@ -1330,3 +1330,399 @@ def get_payment_method(payment_type: str) -> PaymentMethod:
 
 
 
+
+#api start here --------------------------------------------------------------------------------------------
+@app.post("/login/store-manager")
+def login_store_manager(body: LoginBody):
+    ok = server.login_store_manager(body.user_id, body.password)
+    if not ok:
+        raise HTTPException(status_code=401, detail="invalid store manager credentials")
+    manager = server.get_current_store_manager()
+    return ["login success", manager.get_user_id(), manager.get_name()]
+
+@app.post("/logout/store-manager")
+def logout_store_manager():
+    server.logout_store_manager()
+    return ["logout success"]
+
+@app.post("/login/member")
+def login_member(body: LoginBody):
+
+    ok = server.login_member(body.user_id, body.password)
+
+    if not ok:
+        raise HTTPException(status_code=401, detail="invalid member credentials")
+
+    member = server.get_current_member()
+
+    return ["login success", member.get_user_id(), member.get_name()]
+
+@app.post("/tickets/use")
+def use_ticket(body: UseTicketBody):
+
+    member = server.get_current_member()
+
+    if member is None:
+        raise HTTPException(status_code=401, detail="member not logged in")
+
+    ticket = server.find_ticket(body.ticket_id)
+
+    if ticket is None:
+        raise HTTPException(status_code=404, detail="ticket not found")
+
+    if ticket.get_member_id() != member.get_user_id():
+        raise HTTPException(status_code=403, detail="ticket not owned")
+
+    if not ticket.is_enterable(time_manager):
+        raise HTTPException(status_code=400, detail="ticket not usable at this time")
+
+    ticket.mark_used()
+
+    return [
+        "ticket used",
+        ticket.get_ticket_id(),
+        ticket.get_match().get_match_id(),
+        ticket.get_seat().get_seat_id()
+    ]
+
+
+@app.post("/logout/member")
+def logout_member():
+    server.logout_member()
+    return ["logout success"]
+
+
+@app.post("/login/player")
+def login_player(body: LoginBody):
+    ok = server.login_player(body.user_id, body.password)
+    if not ok:
+        raise HTTPException(status_code=401, detail="invalid player credentials")
+    player = server.get_current_player()
+    return ["login success", player.get_user_id(), player.get_name()]
+
+
+@app.post("/logout/player")
+def logout_player():
+    server.logout_player()
+    return ["logout success"]
+
+
+@app.get("/matches")
+def get_matches():
+
+    rows = []
+
+    for match in server.get_all_matches():
+
+        players = [p.get_user_id() for p in match.get_players()]
+
+        rows.append({
+            "match_id": match.get_match_id(),
+            "day": match.get_day(),
+            "time": match.get_time_text(),
+            "status": match.get_status().value,
+            "players": players
+        })
+
+    return rows
+
+
+@app.get("/matches/{match_id}/seats")
+def get_match_seats(match_id: str):
+    match = server.get_tournament().find_match(match_id)
+    server.cleanup_expired_orders()
+    if match is None:
+        raise HTTPException(status_code=404, detail="match not found")
+    rows: List[List[str]] = []
+    for seat in match.get_seats():
+        rows.append([
+            seat.get_seat_id(),
+            seat.get_seat_type().value,
+            str(seat.get_seat_price()),
+            "available" if seat.is_available() else "booked",
+        ])
+    return rows
+
+
+@app.put("/players/select-class")
+def select_player_class(body: SelectClassBody):
+
+    try:
+        server.player_select_class(body.match_id, body.player_class)
+
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return ["class selected", body.match_id, body.player_class.value]
+
+@app.put("/ready/{match_id}")
+def ready_player(match_id: str):
+
+    player = server.get_current_player()
+
+    if player is None:
+        raise HTTPException(status_code=401, detail="player not logged in")
+
+    match = server.get_tournament().find_match(match_id)
+
+    if match is None:
+        raise HTTPException(status_code=404, detail="match not found")
+
+    player_id = player.get_user_id()
+
+    if not match.has_player_entered(player_id):
+        return ["enter match first"]
+
+    if not match.player_has_class(player_id):
+        return ["select class first"]
+
+    match.add_ready_player(player)
+
+    return ["player ready"]
+
+
+@app.get("/matches/{match_id}/players")
+def get_match_players(match_id: str):
+    match = server.get_tournament().find_match(match_id)
+    if match is None:
+        raise HTTPException(status_code=404, detail="match not found")
+    return match.get_player_class_rows()
+
+@app.get("/my-matches")
+def my_matches():
+
+    player = server.get_current_player()
+
+    if player is None:
+        raise HTTPException(status_code=401, detail="player not logged in")
+
+    matches = player.get_match_to_play()
+
+    return [m.get_match_id() for m in matches]
+
+@app.get("/player/{player_id}/matches")
+def get_player_matches(player_id: str):
+
+    result = []
+
+    for m in server.get_tournament().get_matches():
+
+        players = m.get_players()
+
+        if any(p.get_user_id() == player_id for p in players):
+            result.append(m.get_match_id())
+
+    return result
+
+
+@app.post("/orders/seat")
+def create_seat_order(body: CreateSeatOrderBody):
+    try:
+        order = server.create_seat_order(body.match_id, body.seat_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return [order.get_order_id(), order.get_status().value, order.get_match().get_match_id(), order.get_seat().get_seat_id()]
+
+
+@app.post("/orders/store")
+def create_store_order(body: CreateStoreOrderBody):
+    try:
+        order = server.create_store_order(body.match_id, body.product_ids, body.store_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return [order.get_order_id(), order.get_status().value, str(order.total_price())]
+
+
+@app.post("/orders/pay")
+def pay_order(body: PayOrderBody):
+
+    member = server.get_current_member()
+
+    if member is None:
+        raise HTTPException(status_code=401, detail="member not logged in")
+
+    try:
+        payment_method = get_payment_method(body.payment_type)
+
+        receipt = server.pay_order(
+            body.order_id,
+            payment_method,
+            body.coupon_id
+        )
+
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return [
+        receipt.get_receipt_id(),
+        receipt.get_order_id(),
+        str(receipt.get_amount()),
+        receipt.get_description()
+    ]
+
+
+@app.post("/enter-match/{match_id}")
+def enter_match(match_id: str):
+
+    player = server.get_current_player()
+
+    if player is None:
+        raise HTTPException(status_code=401, detail="player not logged in")
+
+    match = server.get_tournament().find_match(match_id)
+
+    if match is None:
+        raise HTTPException(status_code=404, detail="match not found")
+
+    try:
+        return match.enter_match(player)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+@app.get("/me/orders")
+def get_my_orders():
+    member = server.get_current_member()
+    server.cleanup_expired_orders()
+    if member is None:
+        raise HTTPException(status_code=401, detail="member is not logged in")
+    for ticket in member.get_tickets():
+        server.auto_create_no_show_fee_order(ticket)
+    rows: List[List[str]] = []
+    for order in member.get_orders():
+        rows.append([order.get_order_id(), order.get_description(), order.get_status().value, str(order.total_price())])
+    return rows
+
+
+@app.get("/me/tickets")
+def get_my_tickets():
+    member = server.get_current_member()
+    if member is None:
+        raise HTTPException(status_code=401, detail="member is not logged in")
+    rows: List[List[str]] = []
+    for ticket in member.get_tickets():
+        server.auto_create_no_show_fee_order(ticket)
+        rows.append([
+            ticket.get_ticket_id(),
+            ticket.get_match().get_match_id(),
+            ticket.get_seat().get_seat_id(),
+            ticket.get_status().value,
+        ])
+    return rows
+
+
+@app.get("/me/receipts")
+def get_my_receipts():
+    member = server.get_current_member()
+    if member is None:
+        raise HTTPException(status_code=401, detail="member is not logged in")
+    rows: List[List[str]] = []
+    for receipt in member.get_receipts():
+        rows.append([
+            receipt.get_receipt_id(),
+            receipt.get_order_id(),
+            str(receipt.get_amount()),
+            receipt.get_description(),
+            receipt.get_paid_at().isoformat(),
+        ])
+    return rows
+
+
+@app.get("/store/products")
+def get_store_products(store_id: str = "S001"):
+    store_found = server.get_tournament().find_store(store_id)
+    if store_found is None:
+        raise HTTPException(status_code=404, detail="store not found")
+    rows: List[List[str]] = []
+    for product in store_found.get_products():
+        rows.append([
+            str(product.get_product_id()),
+            product.get_name(),
+            str(product.get_price()),
+            str(product.get_stock()),
+        ])
+    return rows
+
+
+@app.post("/store/products")
+def create_product(body: ProductCreateBody, store_id: str = "S001"):
+
+    store = server.get_tournament().get_current_store()
+    if store is None:
+        raise HTTPException(status_code=401, detail="store not logged in")
+
+    store_found = server.get_tournament().find_store(store_id)
+    if store_found is None:
+        raise HTTPException(status_code=404, detail="store not found")
+
+    try:
+        store_found.add_product(Product(body.product_id, body.name, body.price, body.stock))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return ["product created", str(body.product_id), body.name, str(body.stock)]
+
+
+@app.post("/store/products/{product_id}/stock")
+def add_stock(product_id: int, body: StockBody, store_id: str = "S001"):
+
+    store = server.get_tournament().get_current_store()
+    if store is None:
+        raise HTTPException(status_code=401, detail="store not logged in")
+    store_found = server.get_tournament().find_store(store_id)
+    if store_found is None:
+        raise HTTPException(status_code=404, detail="store not found")
+    try:
+        ok = store_found.increase_stock(product_id, body.amount)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not ok:
+        raise HTTPException(status_code=404, detail="product not found")
+    product = store_found.find_product(product_id)
+    return ["stock added", str(product.get_product_id()), product.get_name(), str(product.get_stock())]
+
+
+@app.get("/demo-time")
+def get_demo_time():
+    return [time_manager.now().isoformat()]
+
+
+@app.post("/demo-time/set")
+def set_demo_time(body: DemoTimeSetBody):
+    try:
+        new_time = datetime.fromisoformat(body.iso_datetime)
+        time_manager.set_time(new_time)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid datetime format")
+    return ["demo time set", time_manager.now().isoformat()]
+
+
+@app.post("/demo-time/advance")
+def advance_demo_time(body: DemoTimeAdvanceBody):
+    if body.minutes != 0:
+        time_manager.advance_minutes(body.minutes)
+    if body.hours != 0:
+        time_manager.advance_hours(body.hours)
+    return ["demo time advanced", time_manager.now().isoformat()]
+
+
+@app.post("/demo-time/reset")
+def reset_demo_time():
+    time_manager.reset()
+    return ["demo time reset", time_manager.now().isoformat()]
+
+
+@app.get("/sample-payment-state")
+def sample_payment_state():
+    return [
+        sample_account.get_account_id(),
+        str(sample_account.get_balance()),
+        str(sample_account.get_daily_limit()),
+        str(sample_account.get_used_today()),
+        str(sample_credit_card.get_available_credit()),
+    ]
+
+
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
