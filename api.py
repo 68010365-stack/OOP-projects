@@ -1607,7 +1607,116 @@ def get_my_tickets():
     return rows
 
 
+@app.get("/me/receipts")
+def get_my_receipts():
+    member = server.get_current_member()
+    if member is None:
+        raise HTTPException(status_code=401, detail="member is not logged in")
+    rows: List[List[str]] = []
+    for receipt in member.get_receipts():
+        rows.append([
+            receipt.get_receipt_id(),
+            receipt.get_order_id(),
+            str(receipt.get_amount()),
+            receipt.get_description(),
+            receipt.get_paid_at().isoformat(),
+        ])
+    return rows
 
+
+@app.get("/store/products")
+def get_store_products(store_id: str = "S001"):
+    store_found = server.get_tournament().find_store(store_id)
+    if store_found is None:
+        raise HTTPException(status_code=404, detail="store not found")
+    rows: List[List[str]] = []
+    for product in store_found.get_products():
+        rows.append([
+            str(product.get_product_id()),
+            product.get_name(),
+            str(product.get_price()),
+            str(product.get_stock()),
+        ])
+    return rows
+
+
+@app.post("/store/products")
+def create_product(body: ProductCreateBody, store_id: str = "S001"):
+
+    store = server.get_tournament().get_current_store()
+    if store is None:
+        raise HTTPException(status_code=401, detail="store not logged in")
+
+    store_found = server.get_tournament().find_store(store_id)
+    if store_found is None:
+        raise HTTPException(status_code=404, detail="store not found")
+
+    try:
+        store_found.add_product(Product(body.product_id, body.name, body.price, body.stock))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return ["product created", str(body.product_id), body.name, str(body.stock)]
+
+
+@app.post("/store/products/{product_id}/stock")
+def add_stock(product_id: int, body: StockBody, store_id: str = "S001"):
+
+    store = server.get_tournament().get_current_store()
+    if store is None:
+        raise HTTPException(status_code=401, detail="store not logged in")
+    store_found = server.get_tournament().find_store(store_id)
+    if store_found is None:
+        raise HTTPException(status_code=404, detail="store not found")
+    try:
+        ok = store_found.increase_stock(product_id, body.amount)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not ok:
+        raise HTTPException(status_code=404, detail="product not found")
+    product = store_found.find_product(product_id)
+    return ["stock added", str(product.get_product_id()), product.get_name(), str(product.get_stock())]
+
+
+@app.get("/demo-time")
+def get_demo_time():
+    return [time_manager.now().isoformat()]
+
+
+@app.post("/demo-time/set")
+def set_demo_time(body: DemoTimeSetBody):
+    try:
+        new_time = datetime.fromisoformat(body.iso_datetime)
+        time_manager.set_time(new_time)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="invalid datetime format")
+    return ["demo time set", time_manager.now().isoformat()]
+
+
+@app.post("/demo-time/advance")
+def advance_demo_time(body: DemoTimeAdvanceBody):
+    if body.minutes != 0:
+        time_manager.advance_minutes(body.minutes)
+    if body.hours != 0:
+        time_manager.advance_hours(body.hours)
+    return ["demo time advanced", time_manager.now().isoformat()]
+
+
+@app.post("/demo-time/reset")
+def reset_demo_time():
+    time_manager.reset()
+    return ["demo time reset", time_manager.now().isoformat()]
+
+
+@app.get("/sample-payment-state")
+def sample_payment_state():
+    return [
+        sample_account.get_account_id(),
+        str(sample_account.get_balance()),
+        str(sample_account.get_daily_limit()),
+        str(sample_account.get_used_today()),
+        str(sample_credit_card.get_available_credit()),
+    ]
 
 
 
